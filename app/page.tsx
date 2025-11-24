@@ -25,6 +25,9 @@ export default function Home() {
               <Link href="#template" className="text-gray-700 hover:text-[#0da2e7] transition-colors">
                 Template Siti
               </Link>
+              <Link href="/clone" className="text-gray-700 hover:text-[#0da2e7] transition-colors">
+                Clona Sito
+              </Link>
               <Link href="#pricing" className="text-gray-700 hover:text-[#0da2e7] transition-colors">
                 Prezzi
               </Link>
@@ -522,20 +525,35 @@ export default function Home() {
 
           <div className="text-center bg-white p-8 rounded-2xl shadow-lg max-w-3xl mx-auto">
             <h3 className="text-2xl font-bold text-gray-900 mb-4">
-              Pacchetto Completo Sito + SmileAgent
+              Hai già un sito web?
             </h3>
             <p className="text-gray-600 mb-6">
-              Sito web professionale + SmileAgent incluso per 12 mesi a prezzo speciale
+              Cloniamo il tuo sito esistente e integriamo SmileAgent automaticamente
             </p>
-            <div className="text-4xl font-bold text-[#0da2e7] mb-6">
-              €1.999 <span className="text-lg text-gray-500 font-normal">una tantum</span>
+            <Link
+              href="/clone"
+              className="inline-block bg-green-600 text-white px-8 py-4 rounded-full hover:bg-green-700 transition-colors font-semibold text-lg shadow-lg mb-8"
+            >
+              Clona il Tuo Sito Ora
+            </Link>
+
+            <div className="border-t border-gray-200 pt-8 mt-8">
+              <h3 className="text-2xl font-bold text-gray-900 mb-4">
+                Oppure: Pacchetto Completo Sito + SmileAgent
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Sito web professionale + SmileAgent incluso per 12 mesi a prezzo speciale
+              </p>
+              <div className="text-4xl font-bold text-[#0da2e7] mb-6">
+                €1.999 <span className="text-lg text-gray-500 font-normal">una tantum</span>
+              </div>
+              <button className="bg-[#0da2e7] text-white px-8 py-4 rounded-full hover:bg-[#0b8acc] transition-colors font-semibold text-lg shadow-lg">
+                Richiedi Preventivo
+              </button>
+              <p className="text-sm text-gray-500 mt-4">
+                ✓ Consegna in 7-10 giorni · ✓ 3 revisioni incluse · ✓ Hosting primo anno gratuito
+              </p>
             </div>
-            <button className="bg-[#0da2e7] text-white px-8 py-4 rounded-full hover:bg-[#0b8acc] transition-colors font-semibold text-lg shadow-lg">
-              Richiedi Preventivo
-            </button>
-            <p className="text-sm text-gray-500 mt-4">
-              ✓ Consegna in 7-10 giorni · ✓ 3 revisioni incluse · ✓ Hosting primo anno gratuito
-            </p>
           </div>
         </div>
       </section>

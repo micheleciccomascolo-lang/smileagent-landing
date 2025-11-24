@@ -128,6 +128,7 @@ async function simulateCloning(jobId: string, originalUrl: string, subdomain: st
     console.log(`🔍 Ricerca sottopagine...`);
     const internalLinks: string[] = [];
     const baseUrlObj = new URL(originalUrl);
+    const clonedPages: Array<{title: string; url: string; filename: string}> = [];
 
     $('a[href]').each((i, el) => {
       const href = $(el).attr('href');
@@ -149,6 +150,20 @@ async function simulateCloning(jobId: string, originalUrl: string, subdomain: st
     // Limita a max 20 pagine per performance
     const pagesToClone = internalLinks.slice(0, 20);
     console.log(`📄 Trovate ${internalLinks.length} sottopagine, clono le prime ${pagesToClone.length}`);
+
+    // 3.7. Crea mappa URL originale → file locale per i link interni
+    const urlToLocalFile = new Map<string, string>();
+    urlToLocalFile.set(originalUrl, `/cloned-sites/${subdomain}/index.html`);
+    urlToLocalFile.set(baseUrlObj.origin + baseUrlObj.pathname, `/cloned-sites/${subdomain}/index.html`);
+
+    pagesToClone.forEach(pageUrl => {
+      const pagePath = new URL(pageUrl).pathname;
+      const safePath = pagePath.replace(/\//g, '_').replace(/[^a-zA-Z0-9_-]/g, '') || 'page';
+      const filename = `${safePath}.html`;
+      urlToLocalFile.set(pageUrl, `/cloned-sites/${subdomain}/${filename}`);
+    });
+
+    console.log(`🗺️ Mappa link creata: ${urlToLocalFile.size} pagine`);
 
     // 4. Directory per salvare i file
     const publicDir = path.join(process.cwd(), 'public', 'cloned-sites', subdomain);
@@ -273,10 +288,81 @@ async function simulateCloning(jobId: string, originalUrl: string, subdomain: st
       }
     });
 
+    // 8.5. Rimuovi credits "made by", "realized by", etc.
+    console.log(`🧹 Rimozione credits...`);
+
+    // Lista di pattern da cercare nel testo
+    const creditsPatterns = [
+      'made by', 'realized by', 'powered by', 'designed by',
+      'developed by', 'created by', 'website by', 'built by',
+      'realizzato da', 'progettato da', 'sviluppato da', 'creato da'
+    ];
+
+    // Cerca e rimuovi elementi contenenti questi pattern
+    $('*').each((i, el) => {
+      const text = $(el).text().toLowerCase();
+      const hasCredits = creditsPatterns.some(pattern => text.includes(pattern));
+
+      if (hasCredits) {
+        // Rimuovi solo se l'elemento è piccolo (probabilmente un footer credit)
+        if (text.length < 200) {
+          console.log(`  🗑️ Rimosso: "${$(el).text().trim().substring(0, 50)}..."`);
+          $(el).remove();
+        }
+      }
+    });
+
+    // Rimuovi elementi con classi/id comuni per credits
+    const creditSelectors = [
+      '.credits', '.copyright', '.author', '.designer', '.developer',
+      '#credits', '#copyright', '#author', '#designer', '#developer',
+      '[class*="credits"]', '[class*="copyright"]', '[class*="author"]',
+      '[id*="credits"]', '[id*="copyright"]'
+    ];
+
+    creditSelectors.forEach(selector => {
+      const elements = $(selector);
+      if (elements.length > 0) {
+        console.log(`  🗑️ Rimossi ${elements.length} elementi con selector: ${selector}`);
+        elements.remove();
+      }
+    });
+
+    // 8.6. Aggiorna link interni per puntare alle pagine clonate
+    console.log(`🔗 Aggiornamento link interni...`);
+    let linksUpdated = 0;
+
+    $('a[href]').each((i, el) => {
+      const href = $(el).attr('href');
+      if (href && !href.startsWith('#') && !href.startsWith('mailto:') && !href.startsWith('tel:')) {
+        try {
+          const fullUrl = new URL(href, originalUrl).href;
+          const localPath = urlToLocalFile.get(fullUrl);
+
+          if (localPath) {
+            $(el).attr('href', localPath);
+            linksUpdated++;
+          }
+        } catch (e) {
+          // Ignora URL invalidi
+        }
+      }
+    });
+
+    console.log(`  ✅ Aggiornati ${linksUpdated} link interni`);
+
     // 9. Salva HTML homepage
     const finalHtml = $.html();
     fs.writeFileSync(path.join(publicDir, 'index.html'), finalHtml);
     console.log(`💾 HTML homepage salvato`);
+
+    // Aggiungi homepage all'array delle pagine
+    const homeTitle = $('title').text() || 'Homepage';
+    clonedPages.push({
+      title: homeTitle,
+      url: `/cloned-sites/${subdomain}/index.html`,
+      filename: 'index.html'
+    });
 
     // 9.5. Clona sottopagine
     for (let i = 0; i < pagesToClone.length; i++) {
@@ -316,6 +402,35 @@ async function simulateCloning(jobId: string, originalUrl: string, subdomain: st
           }
         });
 
+        // Rimuovi credits anche dalle sottopagine
+        $sub('*').each((j, el) => {
+          const text = $sub(el).text().toLowerCase();
+          const hasCredits = creditsPatterns.some(pattern => text.includes(pattern));
+          if (hasCredits && text.length < 200) {
+            $sub(el).remove();
+          }
+        });
+
+        creditSelectors.forEach(selector => {
+          $sub(selector).remove();
+        });
+
+        // Aggiorna link interni anche nelle sottopagine
+        $sub('a[href]').each((j, el) => {
+          const href = $sub(el).attr('href');
+          if (href && !href.startsWith('#') && !href.startsWith('mailto:') && !href.startsWith('tel:')) {
+            try {
+              const fullUrl = new URL(href, pageUrl).href;
+              const localPath = urlToLocalFile.get(fullUrl);
+              if (localPath) {
+                $sub(el).attr('href', localPath);
+              }
+            } catch (e) {
+              // Ignora URL invalidi
+            }
+          }
+        });
+
         // Salva sottopagina
         const subPath = new URL(pageUrl).pathname;
         const safePath = subPath.replace(/\//g, '_').replace(/[^a-zA-Z0-9_-]/g, '') || 'page';
@@ -323,6 +438,14 @@ async function simulateCloning(jobId: string, originalUrl: string, subdomain: st
 
         fs.writeFileSync(path.join(publicDir, subFilename), $sub.html());
         console.log(`✅ Sottopagina salvata: ${subFilename}`);
+
+        // Aggiungi sottopagina all'array
+        const subTitle = $sub('title').text() || subFilename.replace('.html', '');
+        clonedPages.push({
+          title: subTitle,
+          url: `/cloned-sites/${subdomain}/${subFilename}`,
+          filename: subFilename
+        });
 
       } catch (error) {
         console.warn(`⚠️ Errore cloning sottopagina ${i + 1}: ${error}`);
@@ -336,10 +459,12 @@ async function simulateCloning(jobId: string, originalUrl: string, subdomain: st
       status: 'completed',
       url: clonedUrl,
       subdomain,
+      pages: clonedPages,
+      originalUrl,
       createdAt: jobsStore.get(jobId)!.createdAt
     });
 
-    console.log(`✅ Cloning completato: ${jobId} -> ${clonedUrl}`);
+    console.log(`✅ Cloning completato: ${jobId} -> ${clonedUrl} (${clonedPages.length} pagine)`);
 
   } catch (error) {
     console.error(`❌ Cloning fallito per job ${jobId}:`, error);

@@ -4,13 +4,21 @@ import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 
+interface ClonedPage {
+  title: string;
+  url: string;
+  filename: string;
+}
+
 interface CloneResult {
   jobId: string;
   subdomain: string;
   url?: string;
-  status: 'processing' | 'completed' | 'failed';
+  status: 'processing' | 'completed' | 'pending_confirmation' | 'finalized' | 'failed';
   estimatedTime?: string;
   error?: string;
+  pages?: ClonedPage[];
+  originalUrl?: string;
 }
 
 export default function ClonePage() {
@@ -80,7 +88,7 @@ export default function ClonePage() {
 
         setResult(data);
 
-        if (data.status === 'completed') {
+        if (data.status === 'completed' || data.status === 'finalized') {
           clearInterval(intervalId);
         } else if (data.status === 'failed') {
           clearInterval(intervalId);
@@ -95,6 +103,32 @@ export default function ClonePage() {
 
     // Stop dopo 10 minuti
     setTimeout(() => clearInterval(intervalId), 600000);
+  };
+
+  const handleFinalize = async () => {
+    if (!result?.jobId) return;
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch(`/api/finalize-site/${result.jobId}`, {
+        method: 'POST'
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Errore durante la finalizzazione');
+      }
+
+      // Aggiorna lo stato del risultato
+      setResult(prev => prev ? { ...prev, status: 'finalized' } : null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Errore sconosciuto');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -228,10 +262,10 @@ export default function ClonePage() {
                       </svg>
                     </div>
                     <h3 className="text-2xl font-bold text-gray-900 mb-2">
-                      Sito Clonato con Successo!
+                      Clonazione Completata!
                     </h3>
                     <p className="text-gray-600">
-                      Il tuo nuovo sito è pronto e operativo
+                      Controlla tutte le pagine e conferma per procedere
                     </p>
                   </div>
 
@@ -247,23 +281,53 @@ export default function ClonePage() {
                     </a>
                   </div>
 
+                  {/* Lista pagine clonate */}
+                  {result.pages && result.pages.length > 0 && (
+                    <div className="mb-6">
+                      <h4 className="font-semibold text-gray-900 mb-3">
+                        📄 Pagine Clonate ({result.pages.length})
+                      </h4>
+                      <div className="grid grid-cols-1 gap-3 max-h-[400px] overflow-y-auto">
+                        {result.pages.map((page, idx) => (
+                          <div key={idx} className="bg-white border border-gray-200 rounded-lg p-4 hover:border-[#0da2e7] transition-colors">
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <h5 className="font-medium text-gray-900">{page.title}</h5>
+                                <p className="text-xs text-gray-500 mt-1">{page.filename}</p>
+                              </div>
+                              <a
+                                href={page.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[#0da2e7] hover:text-[#0b8acc] text-sm flex items-center gap-1"
+                              >
+                                Visualizza
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                </svg>
+                              </a>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Preview del sito clonato */}
                   <div className="mb-6">
                     <div className="flex items-center justify-between mb-3">
-                      <h4 className="font-semibold text-gray-900">🎨 Anteprima del sito clonato</h4>
-                      <div className="flex gap-2">
-                        <a
-                          href={result.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-[#0da2e7] text-white px-4 py-2 rounded-lg hover:bg-[#0b8acc] text-sm flex items-center gap-2 transition-colors font-medium"
-                        >
-                          Apri in Nuova Scheda
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                          </svg>
-                        </a>
-                      </div>
+                      <h4 className="font-semibold text-gray-900">🎨 Anteprima Homepage</h4>
+                      <a
+                        href={result.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-[#0da2e7] text-white px-4 py-2 rounded-lg hover:bg-[#0b8acc] text-sm flex items-center gap-2 transition-colors font-medium"
+                      >
+                        Apri in Nuova Scheda
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
                     </div>
                     <div className="border-4 border-gray-200 rounded-lg overflow-hidden bg-white shadow-lg">
                       <div className="bg-gray-100 px-4 py-2 flex items-center gap-2 border-b border-gray-200">
@@ -285,18 +349,94 @@ export default function ClonePage() {
                       />
                     </div>
                     <p className="text-xs text-gray-500 mt-2 text-center">
-                      🎉 Questo è il sito clonato reale! Salvato in locale su {result.url}
+                      Preview del sito clonato - Controlla che tutto sia corretto
                     </p>
+                  </div>
+
+                  {/* Warning e pulsante conferma */}
+                  <div className="mb-6 p-6 bg-yellow-50 rounded-lg border border-yellow-200">
+                    <h4 className="font-semibold text-yellow-900 mb-2 flex items-center gap-2">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      Importante: Controlla tutte le pagine
+                    </h4>
+                    <p className="text-sm text-yellow-800 mb-4">
+                      Prima di finalizzare, verifica che tutte le pagine siano state clonate correttamente.
+                      Clicca sui link sopra per visualizzare ogni pagina. Dopo la conferma, il sito sarà
+                      ottimizzato per il puntamento DNS.
+                    </p>
+                    <button
+                      onClick={handleFinalize}
+                      disabled={loading}
+                      className="w-full bg-green-600 text-white py-4 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-semibold text-lg shadow-lg"
+                    >
+                      {loading ? 'Finalizzazione in corso...' : '✓ Conferma e Finalizza per DNS'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {result.status === 'finalized' && (
+                <div>
+                  <div className="text-center mb-6">
+                    <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                      Sito Finalizzato e Pronto!
+                    </h3>
+                    <p className="text-gray-600">
+                      Ora puoi puntare il tuo dominio seguendo le istruzioni qui sotto
+                    </p>
+                  </div>
+
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-6 mb-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-green-900">Sito ottimizzato</h4>
+                        <p className="text-sm text-green-700">Tutti i link sono stati convertiti per il puntamento DNS</p>
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-700 mb-2">Path del sito clonato:</p>
+                    <code className="block bg-white border border-green-300 rounded px-3 py-2 text-sm font-mono text-gray-800">
+                      /public/cloned-sites/{result.subdomain}/
+                    </code>
                   </div>
 
                   <DNSInstructions subdomain={result.subdomain} />
 
-                  <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                    <h4 className="font-semibold mb-2">Prossimi step:</h4>
-                    <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
-                      <li>Verifica che il sito clonato sia corretto</li>
+                  {/* Lista pagine finalizzate */}
+                  {result.pages && result.pages.length > 0 && (
+                    <div className="mt-6 p-6 bg-blue-50 rounded-lg border border-blue-200">
+                      <h4 className="font-semibold text-blue-900 mb-3">
+                        📄 Pagine Finalizzate ({result.pages.length})
+                      </h4>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        {result.pages.map((page, idx) => (
+                          <div key={idx} className="bg-white rounded px-3 py-2 border border-blue-200">
+                            <span className="text-green-600 mr-2">✓</span>
+                            <span className="text-gray-700">{page.filename}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-6 p-4 bg-purple-50 rounded-lg border border-purple-200">
+                    <h4 className="font-semibold mb-2 text-purple-900">Prossimi step:</h4>
+                    <ol className="list-decimal list-inside space-y-2 text-sm text-purple-800">
                       <li>Configura il tuo dominio seguendo le istruzioni DNS sopra</li>
-                      <li>Contattaci per integrare le funzionalità AI</li>
+                      <li>Attendi la propagazione DNS (fino a 24-48 ore)</li>
+                      <li>Verifica che il sito sia raggiungibile dal tuo dominio</li>
+                      <li>Contattaci per integrare le funzionalità SmileAgent AI</li>
                     </ol>
                   </div>
                 </div>

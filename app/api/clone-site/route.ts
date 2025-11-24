@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jobsStore } from '../lib/jobs-store';
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 import * as cheerio from 'cheerio';
 import axios from 'axios';
 import * as fs from 'fs';
@@ -87,10 +88,20 @@ async function simulateCloning(jobId: string, originalUrl: string, subdomain: st
   try {
     console.log(`🚀 Inizio cloning: ${originalUrl}`);
 
-    // 1. Avvia Puppeteer
+    // 1. Avvia Puppeteer con Chromium serverless
+    const isProduction = process.env.NODE_ENV === 'production';
+
     browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      args: isProduction ? chromium.args : ['--no-sandbox', '--disable-setuid-sandbox'],
+      defaultViewport: chromium.defaultViewport,
+      executablePath: isProduction
+        ? await chromium.executablePath()
+        : process.platform === 'win32'
+          ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+          : process.platform === 'darwin'
+            ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+            : '/usr/bin/google-chrome',
+      headless: chromium.headless
     });
 
     const page = await browser.newPage();
@@ -109,9 +120,35 @@ async function simulateCloning(jobId: string, originalUrl: string, subdomain: st
       });
     });
 
-    // 3. Estrai HTML
+    // 3. Estrai HTML homepage
     const html = await page.content();
     const $ = cheerio.load(html);
+
+    // 3.5. Trova tutte le sottopagine da clonare
+    console.log(`🔍 Ricerca sottopagine...`);
+    const internalLinks: string[] = [];
+    const baseUrlObj = new URL(originalUrl);
+
+    $('a[href]').each((i, el) => {
+      const href = $(el).attr('href');
+      if (href && !href.startsWith('#') && !href.startsWith('mailto:') && !href.startsWith('tel:')) {
+        try {
+          const fullUrl = new URL(href, originalUrl);
+          // Solo link dello stesso dominio
+          if (fullUrl.hostname === baseUrlObj.hostname && fullUrl.pathname !== baseUrlObj.pathname) {
+            if (!internalLinks.includes(fullUrl.href)) {
+              internalLinks.push(fullUrl.href);
+            }
+          }
+        } catch (e) {
+          // Ignora URL invalidi
+        }
+      }
+    });
+
+    // Limita a max 20 pagine per performance
+    const pagesToClone = internalLinks.slice(0, 20);
+    console.log(`📄 Trovate ${internalLinks.length} sottopagine, clono le prime ${pagesToClone.length}`);
 
     // 4. Directory per salvare i file
     const publicDir = path.join(process.cwd(), 'public', 'cloned-sites', subdomain);
@@ -236,10 +273,61 @@ async function simulateCloning(jobId: string, originalUrl: string, subdomain: st
       }
     });
 
-    // 9. Salva HTML
+    // 9. Salva HTML homepage
     const finalHtml = $.html();
     fs.writeFileSync(path.join(publicDir, 'index.html'), finalHtml);
-    console.log(`💾 HTML salvato`);
+    console.log(`💾 HTML homepage salvato`);
+
+    // 9.5. Clona sottopagine
+    for (let i = 0; i < pagesToClone.length; i++) {
+      try {
+        const pageUrl = pagesToClone[i];
+        console.log(`📥 Cloning sottopagina ${i + 1}/${pagesToClone.length}: ${pageUrl}`);
+
+        await page.goto(pageUrl, {
+          waitUntil: 'domcontentloaded',
+          timeout: 30000
+        }).catch(() => {
+          console.warn(`⚠️ Timeout sottopagina: ${pageUrl}`);
+        });
+
+        const subHtml = await page.content();
+        const $sub = cheerio.load(subHtml);
+
+        // Aggiorna path relativi
+        $sub('link[rel="stylesheet"]').each((j, el) => {
+          if (j < 10) {
+            $sub(el).attr('href', `/cloned-sites/${subdomain}/css/style-${j}.css`);
+          }
+        });
+
+        $sub('script[src]').each((j, el) => {
+          const src = $sub(el).attr('src');
+          if (src && !src.startsWith('http') && j < 5) {
+            $sub(el).attr('src', `/cloned-sites/${subdomain}/js/script-${j}.js`);
+          }
+        });
+
+        $sub('img[src]').each((j, el) => {
+          const src = $sub(el).attr('src');
+          if (src && !src.startsWith('data:') && !src.startsWith('http') && j < 10) {
+            const ext = path.extname(src) || '.jpg';
+            $sub(el).attr('src', `/cloned-sites/${subdomain}/images/image-${j}${ext}`);
+          }
+        });
+
+        // Salva sottopagina
+        const subPath = new URL(pageUrl).pathname;
+        const safePath = subPath.replace(/\//g, '_').replace(/[^a-zA-Z0-9_-]/g, '') || 'page';
+        const subFilename = `${safePath}.html`;
+
+        fs.writeFileSync(path.join(publicDir, subFilename), $sub.html());
+        console.log(`✅ Sottopagina salvata: ${subFilename}`);
+
+      } catch (error) {
+        console.warn(`⚠️ Errore cloning sottopagina ${i + 1}: ${error}`);
+      }
+    }
 
     // 10. URL locale del sito clonato
     const clonedUrl = `http://localhost:3000/cloned-sites/${subdomain}/index.html`;

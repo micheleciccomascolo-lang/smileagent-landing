@@ -93,7 +93,7 @@ async function simulateCloning(jobId: string, originalUrl: string, subdomain: st
 
     browser = await puppeteer.launch({
       args: isProduction ? chromium.args : ['--no-sandbox', '--disable-setuid-sandbox'],
-      defaultViewport: chromium.defaultViewport,
+      defaultViewport: { width: 1920, height: 1080 },
       executablePath: isProduction
         ? await chromium.executablePath()
         : process.platform === 'win32'
@@ -101,7 +101,7 @@ async function simulateCloning(jobId: string, originalUrl: string, subdomain: st
           : process.platform === 'darwin'
             ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
             : '/usr/bin/google-chrome',
-      headless: chromium.headless
+      headless: true
     });
 
     const page = await browser.newPage();
